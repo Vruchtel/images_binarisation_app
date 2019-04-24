@@ -2,12 +2,11 @@
 
 # Form implementation generated from reading ui file 'design.ui'
 #
-# Created by: PyQt5 UI code generator 5.12.1
+# Created by: PyQt5 UI code generator 5.9.2
 #
 # WARNING! All changes made in this file will be lost!
 
 from PyQt5 import QtCore, QtGui, QtWidgets
-
 
 class Ui_MyWowApp(object):
     def setupUi(self, MyWowApp):
@@ -17,9 +16,15 @@ class Ui_MyWowApp(object):
         self.centralwidget.setObjectName("centralwidget")
         self.verticalLayout = QtWidgets.QVBoxLayout(self.centralwidget)
         self.verticalLayout.setObjectName("verticalLayout")
+        self.horizontalLayout_2 = QtWidgets.QHBoxLayout()
+        self.horizontalLayout_2.setObjectName("horizontalLayout_2")
         self.addTaskButton = QtWidgets.QPushButton(self.centralwidget)
         self.addTaskButton.setObjectName("addTaskButton")
-        self.verticalLayout.addWidget(self.addTaskButton)
+        self.horizontalLayout_2.addWidget(self.addTaskButton)
+        self.saveAllResultsButton = QtWidgets.QPushButton(self.centralwidget)
+        self.saveAllResultsButton.setObjectName("saveAllResultsButton")
+        self.horizontalLayout_2.addWidget(self.saveAllResultsButton)
+        self.verticalLayout.addLayout(self.horizontalLayout_2)
         self.horizontalLayout = QtWidgets.QHBoxLayout()
         self.horizontalLayout.setObjectName("horizontalLayout")
         self.tasksListWidget = QtWidgets.QListWidget(self.centralwidget)
@@ -39,7 +44,7 @@ class Ui_MyWowApp(object):
 
     def retranslateUi(self, MyWowApp):
         _translate = QtCore.QCoreApplication.translate
-        MyWowApp.setWindowTitle(_translate("MyWowApp", "MyWowApp"))
+        MyWowApp.setWindowTitle(_translate("MyWowApp", "BinarisationApp"))
         self.addTaskButton.setText(_translate("MyWowApp", "Add new task"))
-
+        self.saveAllResultsButton.setText(_translate("MyWowApp", "Save all results"))
 

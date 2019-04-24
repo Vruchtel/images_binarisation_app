@@ -8,7 +8,7 @@ import shutil
 
 import cv2
 
-from PyQt5 import QtWidgets, QtGui
+from PyQt5 import QtWidgets, QtGui, QtCore
 
 # TODO: 
 # контроль цпу - явный контроль количества запущенных процессов
@@ -28,6 +28,9 @@ WAITING_TEXT = "waiting"
 READY_TEXT = "ready"
 
 TMP_DIRECTORY = "tmp"
+
+SHOWING_IMAGE_WIDTH = 526
+SHOWING_IMAGE_HEIGHT = 669
 
 results_queue = Queue()
 
@@ -89,12 +92,19 @@ class ImagesWindow(QtWidgets.QMainWindow, images_shower.Ui_ImagesShower):
         
         label_original_image = QtWidgets.QLabel(self.originalImageFrame) 
         original_image_object = QtGui.QImage(file_path)
-#         image_profile = image_profile.scaled(250,250, aspectRatioMode=QtCore.Qt.KeepAspectRatio, transformMode=QtCore.Qt.SmoothTransformation) # To scale image for example and keep its Aspect Ration  
+        original_image_object = original_image_object.scaled(SHOWING_IMAGE_WIDTH, SHOWING_IMAGE_HEIGHT, 
+                                                             aspectRatioMode=QtCore.Qt.KeepAspectRatio,
+                                                             transformMode=QtCore.Qt.SmoothTransformation)  
         label_original_image.setPixmap(QtGui.QPixmap.fromImage(original_image_object)) 
         
-        #file_name = ...
+        _, file_name = os.path.split(file_path)
+        tmp_path = os.path.join(TMP_DIRECTORY, file_name)
+        
         label_result_image = QtWidgets.QLabel(self.resultImageFrame) 
-        result_image_object = QtGui.QImage(file_path)
+        result_image_object = QtGui.QImage(tmp_path)
+        result_image_object = result_image_object.scaled(SHOWING_IMAGE_WIDTH, SHOWING_IMAGE_HEIGHT, 
+                                                         aspectRatioMode=QtCore.Qt.KeepAspectRatio,
+                                                         transformMode=QtCore.Qt.SmoothTransformation)  
         label_result_image.setPixmap(QtGui.QPixmap.fromImage(result_image_object))
         
         
@@ -107,6 +117,7 @@ class MainApp(QtWidgets.QMainWindow, design.Ui_MyWowApp):
         
         self.tasks_count = 0
         self.addTaskButton.clicked.connect(self.upload_new_images)
+        self.saveAllResultsButton.clicked.connect(self.save_all_results)
         self.tasksListWidget.itemActivated.connect(self.task_selected_event)        
         
         self.updating_result_thread = threading.Thread(target=self.update_result_info)
@@ -165,6 +176,15 @@ class MainApp(QtWidgets.QMainWindow, design.Ui_MyWowApp):
         if self.check_if_the_task_is_ready(task_id):
             self.images_dialog = ImagesWindow(file_path)
             self.images_dialog.show()        
+        
+        
+    def save_all_results(self):
+        directory_to_save = str(QtWidgets.QFileDialog.getExistingDirectory(self, "Select Directory"))
+        
+        # Копируем файлы из папки tmp в directory_to_save        
+        for file_name in os.listdir(TMP_DIRECTORY):
+            tmp_path = os.path.join(TMP_DIRECTORY, file_name)
+            shutil.copy(tmp_path, directory_to_save)
         
                 
     def closeEvent(self, event):
