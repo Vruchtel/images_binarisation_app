@@ -4,8 +4,9 @@ import time
 import threading
 from multiprocessing import Queue, Pool
 import psutil
+import shutil
 
-from PIL import Image
+import cv2
 
 from PyQt5 import QtWidgets, QtGui
 
@@ -26,7 +27,26 @@ PROCESSES_COUNT = 4
 WAITING_TEXT = "waiting"
 READY_TEXT = "ready"
 
+TMP_DIRECTORY = "tmp"
+
 results_queue = Queue()
+
+
+def binarize_image(image):
+    """
+    Принимает картинку в виде numpy-массива BGR
+    """
+    image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+    _, image = cv2.threshold(image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    return image
+
+
+def save_tmp_image(image, file_path):
+    if not os.path.exists(TMP_DIRECTORY):
+        os.mkdir(TMP_DIRECTORY)
+    _, file_name = os.path.split(file_path)
+    result_path = os.path.join(TMP_DIRECTORY, file_name)
+    cv2.imwrite(result_path, image)
 
 
 def worker_fun(tasks_queue, results_queue):
@@ -50,9 +70,13 @@ def worker_fun(tasks_queue, results_queue):
         # Захватить мьютекс, спросить доступную память, считать файл, если достаточно, отпустить мьютекс
         
         print(available_memory, file_size)
-        image = Image.open(file_name)
         
-        # Результат - в папку tmp по имени - имя файла
+        image = cv2.imread(file_name)
+        image = binarize_image(image)
+        
+        # Результат - в папку tmp по имени - имя файла        
+        save_tmp_image(image, file_name)
+        
             
         results_queue.put(task)
     return
@@ -146,6 +170,10 @@ class MainApp(QtWidgets.QMainWindow, design.Ui_MyWowApp):
     def closeEvent(self, event):
         for _ in range(PROCESSES_COUNT):
             tasks_queue.put(FINISH_TASK)
+            
+        if os.path.exists(TMP_DIRECTORY):
+            shutil.rmtree(TMP_DIRECTORY)
+            
         event.accept()
         
         
