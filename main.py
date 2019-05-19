@@ -57,7 +57,6 @@ def save_tmp_image(image, file_path):
 def worker_fun(tasks_queue, results_queue, unblocking_queue, namespace, atomic_operation):
     
     unblocking_task = unblocking_queue.get()
-    print("UNBLOCKING")
     
     namespace.currently_working_processes += 1
     
@@ -72,12 +71,10 @@ def worker_fun(tasks_queue, results_queue, unblocking_queue, namespace, atomic_o
         if task == BLOCKING_TASK:  
             atomic_operation.acquire()
             if namespace.currently_working_processes != 1: # Никогда не блокируем первый поток
-                print("BLOCKING")
                 namespace.currently_working_processes -= 1
                 atomic_operation.release()
                 unblocking_task = unblocking_queue.get()
                 namespace.currently_working_processes += 1
-                print("UNBLOCKING")
             else:
                 atomic_operation.release()
                 tasks_queue.put(BLOCKING_TASK)
@@ -91,8 +88,6 @@ def worker_fun(tasks_queue, results_queue, unblocking_queue, namespace, atomic_o
         
         namespace.currently_taking_memory += file_size
         available_memory = psutil.virtual_memory().available  # объёмы доступной памяти в байтах
-        
-        print(available_memory, file_size, namespace.currently_taking_memory)
         
         if namespace.currently_taking_memory >= (available_memory - 1024):
             # Запускать задачу не можем, кладём её обратно в очередь
@@ -114,7 +109,6 @@ def worker_fun(tasks_queue, results_queue, unblocking_queue, namespace, atomic_o
         end_all_time, end_process_time = time.time(), time.process_time()
         
         efficiency = (end_process_time - start_process_time) / (end_all_time - start_all_time)
-        print("EFFICIENCY:", efficiency)
         
         if efficiency > RIGHT_EFFICIENCY:
             unblocking_queue.put("1")
@@ -129,6 +123,7 @@ class ImagesWindow(QtWidgets.QMainWindow, images_shower.Ui_ImagesShower):
     def __init__(self, file_path):
         super().__init__()
         self.setupUi(self)
+        self.setFixedSize(self.size())
         
         label_original_image = QtWidgets.QLabel(self.originalImageFrame) 
         original_image_object = QtGui.QImage(file_path)
