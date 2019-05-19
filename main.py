@@ -2,7 +2,7 @@ import sys  # sys нужен для передачи argv в QApplication
 import os
 import time
 import threading
-from multiprocessing import Queue, Pool
+from multiprocessing import Queue, Pool, Manager, Lock, current_process
 import psutil
 import shutil
 
@@ -10,19 +10,16 @@ import cv2
 
 from PyQt5 import QtWidgets, QtGui, QtCore
 
-# TODO: 
-# контроль цпу - явный контроль количества запущенных процессов
-# контроль памяти - как-то спрашивать доступную память из питона
-
-# Ещё такой момент, как лучше, открывать отдельное окно с картинкой? Наверное, да. Точнее окно с двумя картинками
-
-
 import design  # Это наш конвертированный файл дизайна
 import images_shower
 
 tasks_queue = Queue()
+unblocking_queue = Queue()
+
 FINISH_TASK = "Finish"
-PROCESSES_COUNT = 4
+BLOCKING_TASK = "Block"
+PROCESSES_COUNT = 10
+START_PROCESSES_COUNT = 4
 
 WAITING_TEXT = "waiting"
 READY_TEXT = "ready"
@@ -32,7 +29,12 @@ TMP_DIRECTORY = "tmp"
 SHOWING_IMAGE_WIDTH = 526
 SHOWING_IMAGE_HEIGHT = 669
 
+RIGHT_EFFICIENCY = 0.8
+LEFT_EFFICIENCY = 0.4
+
 results_queue = Queue()
+
+atomic_operation = Lock()
 
 
 def binarize_image(image):
@@ -52,35 +54,73 @@ def save_tmp_image(image, file_path):
     cv2.imwrite(result_path, image)
 
 
-def worker_fun(tasks_queue, results_queue):
+def worker_fun(tasks_queue, results_queue, unblocking_queue, namespace, atomic_operation):
+    
+    unblocking_task = unblocking_queue.get()
+    print("UNBLOCKING")
+    
+    namespace.currently_working_processes += 1
+    
     while True:
-        task = tasks_queue.get()
-#         print(task, str(time.time()))   
         
-        if task == FINISH_TASK:
+        task = tasks_queue.get()
+        
+        if task == FINISH_TASK:  
             results_queue.put(task)
             break
             
+        if task == BLOCKING_TASK:  
+            atomic_operation.acquire()
+            if namespace.currently_working_processes != 1: # Никогда не блокируем первый поток
+                print("BLOCKING")
+                namespace.currently_working_processes -= 1
+                atomic_operation.release()
+                unblocking_task = unblocking_queue.get()
+                namespace.currently_working_processes += 1
+                print("UNBLOCKING")
+            else:
+                atomic_operation.release()
+                tasks_queue.put(BLOCKING_TASK)
+            continue
+            
         file_name = task.split(' ')[1]
-        print(task)
         
         # Проверка того, есть ли доступная память
         # Если доступная память есть - загрузка и обработка картинки
-        available_memory = psutil.virtual_memory().available  # объёмы доступной памяти в байтах
         file_size = os.path.getsize(file_name)
         
-        # Наверное, нужно проверку доступной памяти и считывание файла в память делать с помощью мьютекса
-        # Захватить мьютекс, спросить доступную память, считать файл, если достаточно, отпустить мьютекс
+        namespace.currently_taking_memory += file_size
+        available_memory = psutil.virtual_memory().available  # объёмы доступной памяти в байтах
         
-        print(available_memory, file_size)
+        print(available_memory, file_size, namespace.currently_taking_memory)
+        
+        if namespace.currently_taking_memory >= (available_memory - 1024):
+            # Запускать задачу не можем, кладём её обратно в очередь
+            tasks_queue.put(task)
+            namespace.currently_taking_memory -= file_size
+            continue        
+            
+        # Время работы начинаем замерять отсюда
+        start_all_time, start_process_time = time.time(), time.process_time()
         
         image = cv2.imread(file_name)
+        namespace.currently_taking_memory -= file_size
         image = binarize_image(image)
         
         # Результат - в папку tmp по имени - имя файла        
         save_tmp_image(image, file_name)
         
-            
+        # Время работы заканчиваем замерять здесь
+        end_all_time, end_process_time = time.time(), time.process_time()
+        
+        efficiency = (end_process_time - start_process_time) / (end_all_time - start_all_time)
+        print("EFFICIENCY:", efficiency)
+        
+        if efficiency > RIGHT_EFFICIENCY:
+            unblocking_queue.put("1")
+        if efficiency < LEFT_EFFICIENCY and (end_process_time - start_process_time) != 0.0:
+            tasks_queue.put(BLOCKING_TASK)
+        
         results_queue.put(task)
     return
             
@@ -123,10 +163,14 @@ class MainApp(QtWidgets.QMainWindow, design.Ui_MyWowApp):
         self.updating_result_thread = threading.Thread(target=self.update_result_info)
         self.updating_result_thread.start()
         
+        # Добавим в очередь разблокировки только 4 команды - разблокируем 4 потока
+        for _ in range(START_PROCESSES_COUNT):
+            unblocking_queue.put("1")
+        
             
     def upload_new_images(self):
         files = QtWidgets.QFileDialog.getOpenFileNames(self,
-                                     "Выберите один или несколько файлов",
+                                     "Select one or more files",
                                      "/home",
                                      "Images (*.png *.xpm *.jpg)")
 
@@ -137,7 +181,6 @@ class MainApp(QtWidgets.QMainWindow, design.Ui_MyWowApp):
                 self.tasksListWidget.addItem(task_name)
                 
                 tasks_queue.put(task_name)
-                print(tasks_queue.empty(), time.time())
                 
                 # Запустить счётчик % обработки
                 self.processListWidget.addItem(str(self.tasks_count) + ". " + WAITING_TEXT)
@@ -170,7 +213,6 @@ class MainApp(QtWidgets.QMainWindow, design.Ui_MyWowApp):
         split_item_text = item.text().split(' ')
         file_path = split_item_text[1]
         task_id = int(split_item_text[0].split('.')[0]) - 1
-        print("SELECTED ITEM:", file_path)
         
         # Проверяем, что задача выполнена, и только если она выполнена, открываем новое окно с картинкой
         if self.check_if_the_task_is_ready(task_id):
@@ -205,8 +247,13 @@ def run_app():
     app.exec_()  # и запускаем приложение
     
     
+import numpy as np
+    
 if __name__ == '__main__':  # Если мы запускаем файл напрямую, а не импортируем
-    with Pool(PROCESSES_COUNT, worker_fun, (tasks_queue, results_queue,)) as workers_pool:
+    shared_data_manager = Manager()
+    namespace = shared_data_manager.Namespace()
+    namespace.currently_taking_memory = 0
+    namespace.currently_working_processes = 0
+    
+    with Pool(PROCESSES_COUNT, worker_fun, (tasks_queue, results_queue, unblocking_queue, namespace, atomic_operation)) as workers_pool:
         run_app()
-    
-    
