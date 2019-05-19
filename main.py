@@ -216,6 +216,9 @@ class MainApp(QtWidgets.QMainWindow, design.Ui_MyWowApp):
         
         
     def save_all_results(self):
+        if not os.path.isdir(TMP_DIRECTORY):
+            return
+        
         directory_to_save = str(QtWidgets.QFileDialog.getExistingDirectory(self, "Select Directory"))
         
         # Копируем файлы из папки tmp в directory_to_save        
